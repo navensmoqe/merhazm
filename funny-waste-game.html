@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة التقاط الفضلات</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Almarai:wght@400;700&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Almarai', sans-serif;
+            background-color: #f5e6ff;
+            overflow: hidden;
+            text-align: center;
+        }
+        
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .game-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #6200ee;
+            z-index: 100;
+        }
+        
+        .player {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 130px;
+            height: 130px;
+            background-image: url('https://l.top4top.io/p_33603a5ww1.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            z-index: 10;
+            transition: transform 0.1s;
+        }
+        
+        .item {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            background: none;
+            z-index: 5;
+        }
+        
+        .waste::after {
+            content: '💩';
+        }
+        
+        .fruit::after {
+            content: attr(data-fruit);
+        }
+        
+        .splash {
+            position: absolute;
+            font-size: 30px;
+            animation: splash 0.5s forwards;
+            z-index: 20;
+        }
+        
+        @keyframes splash {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        
+        .shake {
+            animation: shake 0.5s;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(-50%) rotate(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-55%) rotate(-5deg); }
+            20%, 40%, 60%, 80% { transform: translateX(-45%) rotate(5deg); }
+        }
+        
+        .start-screen, .game-over {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            z-index: 50;
+        }
+        
+        .title {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffcc00;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        .subtitle {
+            font-size: 24px;
+            margin-bottom: 40px;
+            color: #ff6b6b;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            font-size: 20px;
+            background-color: #6200ee;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #3700b3;
+            transform: scale(1.05);
+        }
+        
+        .score-display {
+            font-size: 36px;
+            margin-bottom: 20px;
+            color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-info">
+            النقاط: <span id="score">0</span>
+        </div>
+        <div class="player"></div>
+        
+        <div class="start-screen">
+            <h1 class="title">لعبة مير حازم والفضلات</h1>
+            <p class="subtitle">التقط الفضلات وتجنب الفواكه بأي ثمن!</p>
+            <button class="btn" id="start-btn">ابدأ اللعبة</button>
+        </div>
+        
+        <div class="game-over" style="display:none;">
+            <h1 class="title">انتهت اللعبة!</h1>
+            <p class="subtitle">لقد التقطت فاكهة... يا للعار!</p>
+            <div class="score-display">النقاط: <span id="final-score">0</span></div>
+            <button class="btn" id="restart-btn">حاول مرة أخرى</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const player = document.querySelector('.player');
+            const gameContainer = document.querySelector('.game-container');
+            const scoreDisplay = document.getElementById('score');
+            const finalScoreDisplay = document.getElementById('final-score');
+            const startScreen = document.querySelector('.start-screen');
+            const gameOverScreen = document.querySelector('.game-over');
+            const startBtn = document.getElementById('start-btn');
+            const restartBtn = document.getElementById('restart-btn');
+            
+            let score = 0;
+            let gameRunning = false;
+            let playerPosition = window.innerWidth / 2;
+            let items = [];
+            let itemInterval;
+            
+            // تعريف الأصوات الجديدة
+            const soundEffects = {
+                waste: 'https://www.myinstants.com/media/sounds/mlg-airhorn_1.mp3',
+                fruit: 'https://www.myinstants.com/media/sounds/sadtrombone.swf_1.mp3'
+            };
+
+            // تحميل الأصوات مسبقاً
+            const wasteSound = new Audio();
+            const fruitSound = new Audio();
+
+            // تهيئة الأصوات
+            function initSounds() {
+                wasteSound.src = soundEffects.waste;
+                fruitSound.src = soundEffects.fruit;
+                
+                // ضبط مستوى الصوت
+                wasteSound.volume = 0.3; // خفض مستوى الصوت قليلاً
+                fruitSound.volume = 0.4;
+                
+                // تحميل مسبق للأصوات
+                wasteSound.load();
+                fruitSound.load();
+            }
+
+            // استدعاء تهيئة الأصوات عند تحميل الصفحة
+            initSounds();
+
+            // تعديل معالج حدث زر البدء
+            startBtn.addEventListener('click', function() {
+                // محاولة تشغيل الصوت عند النقر على زر البدء
+                const playSound = async () => {
+                    try {
+                        await wasteSound.play();
+                        wasteSound.pause();
+                        wasteSound.currentTime = 0;
+                        init();
+                    } catch (error) {
+                        console.log('تعذر تشغيل الصوت:', error);
+                        // محاولة إعادة تهيئة الأصوات
+                        initSounds();
+                        init();
+                    }
+                };
+                playSound();
+            });
+
+            // Initialize game
+            function init() {
+                score = 0;
+                scoreDisplay.textContent = score;
+                playerPosition = window.innerWidth / 2;
+                player.style.left = `${playerPosition}px`;
+                items = [];
+                
+                // Clear existing items
+                document.querySelectorAll('.item').forEach(item => item.remove());
+                
+                // Start game
+                gameRunning = true;
+                startScreen.style.display = 'none';
+                gameOverScreen.style.display = 'none';
+                
+                if (itemInterval) clearInterval(itemInterval);
+                itemInterval = setInterval(createItem, 1000);
+            }
+            
+            // Create a new falling item
+            function createItem() {
+                if (!gameRunning) return;
+                
+                const item = document.createElement('div');
+                item.className = 'item';
+                
+                // Random position
+                const position = Math.random() * (window.innerWidth - 50);
+                item.style.left = `${position}px`;
+                item.style.top = '-50px';
+                
+                // Random type (70% waste, 30% fruit)
+                const isWaste = Math.random() < 0.7;
+                item.classList.add(isWaste ? 'waste' : 'fruit');
+                item.dataset.type = isWaste ? 'waste' : 'fruit';
+                
+                if (!isWaste) {
+                    const fruits = ['🍎', '🍌', '🍒'];
+                    item.dataset.fruit = fruits[Math.floor(Math.random() * fruits.length)];
+                }
+                
+                gameContainer.appendChild(item);
+                animateItem(item);
+            }
+            
+            // Animate a falling item
+            function animateItem(item) {
+                const speed = Math.random() * 3 + 2;
+                let posY = -50;
+                let rotation = 0;
+                
+                const animate = () => {
+                    if (!gameRunning) return;
+                    
+                    posY += speed;
+                    rotation += 2;
+                    item.style.top = `${posY}px`;
+                    item.style.transform = `rotate(${rotation}deg)`;
+                    
+                    // Check for collision with player
+                    const playerRect = player.getBoundingClientRect();
+                    const itemRect = item.getBoundingClientRect();
+                    
+                    if (
+                        playerRect.left < itemRect.right &&
+                        playerRect.right > itemRect.left &&
+                        playerRect.top < itemRect.bottom &&
+                        playerRect.bottom > itemRect.top
+                    ) {
+                        // Collision detected
+                        item.remove();
+                        
+                        if (item.dataset.type === 'waste') {
+                            score += 10;
+                            scoreDisplay.textContent = score;
+                            createSplash('💰', itemRect.left, itemRect.top);
+                            // تشغيل صوت التقاط الفضلات
+                            try {
+                                const newWasteSound = new Audio(soundEffects.waste);
+                                newWasteSound.volume = 0.5;
+                                newWasteSound.playbackRate = 0.8 + Math.random() * 0.4;
+                                newWasteSound.play().catch(e => console.log('خطأ في تشغيل الصوت:', e));
+                            } catch (e) {
+                                console.log('خطأ في تشغيل الصوت:', e);
+                            }
+                            player.classList.add('shake');
+                            setTimeout(() => player.classList.remove('shake'), 500);
+                        } else {
+                            gameOver();
+                            // تشغيل صوت التقاط الفاكهة
+                            try {
+                                const newFruitSound = new Audio(soundEffects.fruit);
+                                newFruitSound.volume = 0.5;
+                                newFruitSound.playbackRate = 1.2;
+                                newFruitSound.play().catch(e => console.log('خطأ في تشغيل الصوت:', e));
+                            } catch (e) {
+                                console.log('خطأ في تشغيل الصوت:', e);
+                            }
+                            createSplash('🤢', itemRect.left, itemRect.top);
+                        }
+                        
+                        return;
+                    }
+                    
+                    // Remove if out of bounds
+                    if (posY > window.innerHeight) {
+                        item.remove();
+                        return;
+                    }
+                    
+                    requestAnimationFrame(animate);
+                };
+                
+                requestAnimationFrame(animate);
+            }
+            
+            // Create a splash effect
+            function createSplash(emoji, x, y) {
+                const splash = document.createElement('div');
+                splash.className = 'splash';
+                splash.textContent = emoji;
+                splash.style.left = `${x}px`;
+                splash.style.top = `${y}px`;
+                gameContainer.appendChild(splash);
+                
+                // Remove after animation
+                setTimeout(() => splash.remove(), 500);
+            }
+            
+            // Game over
+            function gameOver() {
+                gameRunning = false;
+                finalScoreDisplay.textContent = score;
+                gameOverScreen.style.display = 'flex';
+                clearInterval(itemInterval);
+            }
+            
+            // Move player with mouse
+            gameContainer.addEventListener('mousemove', function(e) {
+                if (!gameRunning) return;
+                playerPosition = e.clientX;
+                player.style.left = `${playerPosition}px`;
+            });
+            
+            // Touch controls for mobile
+            gameContainer.addEventListener('touchmove', function(e) {
+                if (!gameRunning) return;
+                e.preventDefault();
+                playerPosition = e.touches[0].clientX;
+                player.style.left = `${playerPosition}px`;
+            }, { passive: false });
+            
+            // Restart game button
+            restartBtn.addEventListener('click', init);
+        });
+    </script>
+</body>
+</html>
